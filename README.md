@@ -1,6 +1,6 @@
-# Finance Dashboard App
+# Finance Dashboard & Stock Simulator App
 
-Build A MERN Finance Dashboard App with ML-based Profit Prediction
+Build A MERN Finance Dashboard and Stock Simulator App with ML-based Profit & Stock Predictions
 
 ## 🚀 Quick Start
 
@@ -37,9 +37,11 @@ Open http://localhost:5173 in your browser
 ## ✨ Features
 
 - ✅ **User Authentication** (JWT-based login/register)
+- ✅ **Financial Dashboard** with charts and KPIs
 - ✅ **ML-based Profit Prediction** (Random Forest model)
 - ✅ **Prediction History** tracking per user
-- ✅ **Financial Dashboard** with charts and KPIs
+- ✅ **Stock Simulator & Portfolio** (Real-time tracking, Buy/Sell transactions, Portfolio, & Watchlist)
+- ✅ **ML Stock Price Forecasting** (Python model)
 - ✅ **Protected Routes** for authenticated users
 
 ## 📚 Documentation
@@ -50,19 +52,19 @@ Open http://localhost:5173 in your browser
 
 ## 🛠️ Tech Stack
 
-- **Frontend:** React, TypeScript, Material-UI, Redux Toolkit, Recharts
+- **Frontend:** React, JavaScript (JSX), Material-UI, Redux Toolkit, Recharts
 - **Backend:** Node.js, Express, MongoDB, Mongoose
-- **ML:** Python, scikit-learn, Random Forest Regressor
+- **ML:** Python, scikit-learn (Random Forest Regressor), pandas, numpy, joblib
 - **Auth:** JWT, bcrypt
 
 ## 📊 Project Status
 
-✅ **Fully Functional** - All features working and tested
+**Fully Functional** - All features working and tested
 
-- 3 users registered
-- Predictions working with ML model
+- Users registered & database seeded
+- Profit and Stock predictions working with ML models
 - Dashboard displaying financial data
-- History tracking functional
+- Simulator and transaction history fully functional
 
 ## 🎯 Quick Commands
 
@@ -82,6 +84,6 @@ cd client && npm run dev
 
 ## 📁 Project Structure
 
-- `/server` - Backend API with auth and prediction routes
-- `/client` - React frontend with authentication and prediction UI
-- `/server/ml` - Python ML training and prediction scripts
+- `/server` - Backend API with auth, prediction, and stock/market simulator routes
+- `/client` - React frontend (JavaScript/JSX) with dashboard, authentication, predictions, and stock simulator UI
+- `/server/ml` - Python ML training and prediction scripts (Profit & Stock predictions)

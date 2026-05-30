@@ -2,12 +2,14 @@
 
 ## 📋 Project Overview
 
-**Finance App** is a full-stack MERN (MongoDB, Express, React, Node.js) application with Machine Learning integration for profit prediction. The application provides:
+**Finance App** is a full-stack MERN (MongoDB, Express, React, Node.js) application with Machine Learning integration for profit prediction and stock simulation. The application provides:
 
 - **User Authentication** (JWT-based login/register)
 - **Financial Dashboard** with interactive charts and KPIs
 - **ML-based Profit Prediction** using Random Forest Regressor
 - **Prediction History** tracking per user
+- **Stock Simulator & Portfolio** (Real-time tracking, Buy/Sell simulated transactions, Portfolio, & Watchlist)
+- **ML Stock Price Forecasting** (Python model)
 - **Protected Routes** for authenticated users
 
 ---
@@ -34,7 +36,7 @@
 ## 🛠️ Tech Stack
 
 ### Frontend
-- **React 18** with TypeScript
+- **React 18** with JavaScript (JSX)
 - **Material-UI (MUI)** for UI components
 - **Redux Toolkit** with RTK Query for state management
 - **Recharts** for data visualization
@@ -46,12 +48,12 @@
 - **MongoDB** with Mongoose ODM
 - **JWT** for authentication
 - **bcryptjs** for password hashing
-- **Python** integration via child_process for ML predictions
+- **Python** integration via `python-shell`/child_process for ML predictions
 
 ### Machine Learning
 - **Python 3.8+**
-- **scikit-learn** (Random Forest Regressor)
-- **pandas** for data handling
+- **scikit-learn** (Random Forest Regressor & Stock Price Predictor)
+- **pandas** & **numpy** for data handling and feature engineering
 - **joblib** for model persistence
 
 ---
@@ -63,25 +65,26 @@ finance-app/
 ├── client/                          # Frontend React Application
 │   ├── src/
 │   │   ├── components/              # Reusable components
-│   │   │   ├── DashboardBox.tsx
-│   │   │   ├── FlexBetween.tsx
-│   │   │   ├── BoxHeader.tsx
-│   │   │   └── ProtectedRoute.tsx
+│   │   │   ├── DashboardBox.jsx
+│   │   │   ├── FlexBetween.jsx
+│   │   │   ├── BoxHeader.jsx
+│   │   │   └── ProtectedRoute.jsx
 │   │   ├── scenes/                  # Page components
 │   │   │   ├── login/              # Login page
 │   │   │   ├── register/           # Registration page
 │   │   │   ├── dashboard/          # Main dashboard
-│   │   │   │   ├── Row1.tsx        # Revenue/Expenses charts
-│   │   │   │   ├── Row2.tsx        # Product/Transaction charts
-│   │   │   │   └── Row3.tsx        # KPI overview
+│   │   │   │   ├── Row1.jsx        # Revenue/Expenses charts
+│   │   │   │   ├── Row2.jsx        # Product/Transaction charts
+│   │   │   │   └── Row3.jsx        # KPI overview
 │   │   │   ├── predictions/        # ML prediction page
-│   │   │   └── predictionHistory/  # Prediction history page
+│   │   │   ├── predictionHistory/  # Prediction history page
+│   │   │   ├── simulator/          # Stock Simulator & Portfolio
+│   │   │   └── stockPredictions/   # ML Stock Price forecasting
 │   │   ├── state/                   # Redux state management
-│   │   │   ├── api.ts              # RTK Query API endpoints
-│   │   │   └── types.ts            # TypeScript types
-│   │   ├── theme.ts                 # Material-UI theme
-│   │   ├── App.tsx                  # Main app component
-│   │   └── main.tsx                 # Entry point
+│   │   │   └── api.js              # RTK Query API endpoints
+│   │   ├── theme.js                 # Material-UI theme
+│   │   ├── App.jsx                  # Main app component
+│   │   └── main.jsx                 # Entry point
 │   ├── package.json
 │   └── .env                         # Frontend environment variables
 │
@@ -91,18 +94,22 @@ finance-app/
 │   │   ├── Prediction.js           # Prediction history model
 │   │   ├── KPI.js                  # KPI data model
 │   │   ├── Product.js              # Product model
-│   │   └── Transaction.js          # Transaction model
+│   │   ├── Transaction.js          # Transaction model
+│   │   └── StockTransaction.js     # Stock transaction model
 │   ├── routes/                      # API routes
 │   │   ├── auth.js                 # Authentication routes
 │   │   ├── prediction.js           # Prediction routes
 │   │   ├── kpi.js                  # KPI routes
 │   │   ├── product.js              # Product routes
-│   │   └── transaction.js          # Transaction routes
+│   │   ├── transaction.js          # Transaction routes
+│   │   ├── market.js               # Market/Simulator routes
+│   │   └── predictStock.js         # Stock prediction routes
 │   ├── middleware/                  # Express middleware
 │   │   └── auth.js                 # JWT verification
 │   ├── ml/                          # Machine Learning scripts
 │   │   ├── train_model.py          # Model training script
 │   │   ├── predict.py              # Prediction inference script
+│   │   ├── predict_stock.py        # Stock price forecasting script
 │   │   ├── profit_model.pkl        # Trained model file
 │   │   └── requirements.txt         # Python dependencies
 │   ├── scripts/                     # Utility scripts
@@ -409,6 +416,15 @@ The model is called via:
 | GET | `/product/products/` | Get product data | No |
 | GET | `/transaction/transactions/` | Get transaction data | No |
 
+### Market & Stock Simulator
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET | `/market/portfolio` | Get user stock portfolio | Yes |
+| GET | `/market/watchlist` | Get user stock watchlist | Yes |
+| GET | `/market/history` | Get user simulated transaction history | Yes |
+| GET | `/market/search/:ticker` | Search real-time stock ticker details | Yes |
+| POST | `/predict-stock/` | Predict next day stock performance | Yes |
+
 ---
 
 ## 🗄️ Database Schema
@@ -438,6 +454,20 @@ The model is called via:
   predictedProfit: Number,
   confidence: Number,
   inputValues: Map,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### Stock Transactions Collection
+```javascript
+{
+  _id: ObjectId,
+  userId: ObjectId (ref: User),
+  ticker: String,
+  type: String ('BUY' | 'SELL'),
+  shares: Number,
+  price: Number,
   createdAt: Date,
   updatedAt: Date
 }
@@ -671,8 +701,8 @@ npm run preview
 - `server/routes/prediction.js` - ML prediction logic
 - `server/ml/train_model.py` - Model training
 - `server/ml/predict.py` - Model inference
-- `client/src/App.tsx` - Frontend routing
-- `client/src/state/api.ts` - API integration
+- `client/src/App.jsx` - Frontend routing
+- `client/src/state/api.js` - API integration
 
 ---
 
