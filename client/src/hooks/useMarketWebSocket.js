@@ -3,61 +3,89 @@ import { useEffect, useRef, useState, useCallback } from "react";
 export function useMarketWebSocket(tickers = []) {
   const [livePrices, setLivePrices] = useState({});
   const [connected, setConnected] = useState(false);
+  const [authError, setAuthError] = useState(false);
   const wsRef = useRef(null);
   const subscribedRef = useRef(new Set());
   const tickersRef = useRef(tickers);
+  const reconnectRef = useRef({ attempts: 0, max: 6, timeout: null });
 
   useEffect(() => {
     tickersRef.current = tickers;
   }, [tickers]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
+    let mounted = true;
 
-    const rawBaseUrl = import.meta.env.VITE_BASE_URL || "";
-    const baseUrl = rawBaseUrl.replace(/\/$/, "");
-    const wsUrl = `${baseUrl.replace(/^http/, "ws")}/ws/market?token=${token}`;
+    const connect = () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
 
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+      const rawBaseUrl = import.meta.env.VITE_BASE_URL || "";
+      const baseUrl = rawBaseUrl.replace(/\/$/, "");
+      const wsUrl = `${baseUrl.replace(/^http/, "ws")}/ws/market?token=${token}`;
 
-    ws.onopen = () => {
-      setConnected(true);
-      if (tickersRef.current.length > 0) {
-        ws.send(
-          JSON.stringify({
-            type: "subscribe",
-            tickers: tickersRef.current,
-          })
-        );
-        tickersRef.current.forEach((t) => subscribedRef.current.add(t.toUpperCase()));
-      }
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (!mounted) return;
+        setAuthError(false);
+        setConnected(true);
+        reconnectRef.current.attempts = 0;
+        if (tickersRef.current.length > 0) {
+          ws.send(
+            JSON.stringify({
+              type: "subscribe",
+              tickers: tickersRef.current,
+            })
+          );
+          tickersRef.current.forEach((t) => subscribedRef.current.add(t.toUpperCase()));
+        }
+      };
+
+      ws.onmessage = (event) => {
+        let msg;
+        try {
+          msg = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+
+        if (msg.type === "priceUpdate" && msg.data) {
+          setLivePrices((prev) => ({ ...prev, ...msg.data }));
+        }
+      };
+
+      ws.onclose = (event) => {
+        if (!mounted) return;
+        setConnected(false);
+        if (event && event.code === 1008) {
+          setAuthError(true);
+          return;
+        }
+
+        // try to reconnect with exponential backoff
+        const attempts = reconnectRef.current.attempts + 1;
+        reconnectRef.current.attempts = attempts;
+        if (attempts <= reconnectRef.current.max) {
+          const delay = Math.min(30000, 1000 * 2 ** attempts);
+          reconnectRef.current.timeout = setTimeout(connect, delay);
+        }
+      };
+
+      ws.onerror = () => {
+        setConnected(false);
+      };
     };
 
-    ws.onmessage = (event) => {
-      let msg;
-      try {
-        msg = JSON.parse(event.data);
-      } catch {
-        return;
-      }
-
-      if (msg.type === "priceUpdate" && msg.data) {
-        setLivePrices((prev) => ({ ...prev, ...msg.data }));
-      }
-    };
-
-    ws.onclose = () => {
-      setConnected(false);
-    };
-
-    ws.onerror = () => {
-      setConnected(false);
-    };
+    connect();
 
     return () => {
-      ws.close();
+      mounted = false;
+      clearTimeout(reconnectRef.current.timeout);
+      try {
+        wsRef.current?.close();
+      } catch {}
     };
   }, []);
 
@@ -81,5 +109,5 @@ export function useMarketWebSocket(tickers = []) {
     subscribedRef.current = next;
   }, []);
 
-  return { livePrices, connected, updateSubscriptions };
+  return { livePrices, connected, authError, updateSubscriptions };
 }

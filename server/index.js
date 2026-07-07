@@ -57,6 +57,11 @@ mongoose
 
     const wsClients = new Map();
 
+    // Simple in-memory cache for market data to reduce Yahoo calls
+    // key -> { ts: timestamp, value: { price, change, changePercent, timestamp } }
+    const marketCache = new Map();
+    const MARKET_CACHE_TTL = 4000; // ms, slightly less than broadcast interval
+
     wss.on("connection", (ws, req) => {
       const token = new URL(req.url, "http://localhost").searchParams.get("token");
 
@@ -114,26 +119,52 @@ mongoose
       if (allTickers.size === 0) return;
 
       const tickers = Array.from(allTickers);
-      const results = await Promise.allSettled(
-        tickers.map((t) => fetchYahooStockData(t, "1d", "1d"))
-      );
+      // For each ticker, try to use cache; otherwise fetch
+      const fetchPromises = tickers.map(async (ticker) => {
+        const now = Date.now();
+        const cached = marketCache.get(ticker);
+        if (cached && now - cached.ts < MARKET_CACHE_TTL) {
+          return { ticker, meta: cached.value, fromCache: true };
+        }
+
+        try {
+          const result = await fetchYahooStockData(ticker, "1d", "1d");
+          if (result?.meta) {
+            const meta = result.meta;
+            const price = meta.regularMarketPrice;
+            const prevClose = meta.chartPreviousClose;
+            const change = price - prevClose;
+            const changePercent = (change / prevClose) * 100;
+
+            const packed = {
+              price: parseFloat(price.toFixed(2)),
+              change: parseFloat(change.toFixed(2)),
+              changePercent: parseFloat(changePercent.toFixed(2)),
+              timestamp: Date.now(),
+            };
+
+            marketCache.set(ticker, { ts: now, value: packed });
+            return { ticker, meta: packed, fromCache: false };
+          }
+        } catch (err) {
+          // ignore fetch error, will skip this ticker
+          console.error("fetchYahooStockData error for", ticker, err?.message || err);
+        }
+
+        // fallback to cached value even if stale (best-effort)
+        if (cached && cached.value) {
+          return { ticker, meta: cached.value, fromCache: true };
+        }
+
+        return { ticker, meta: null };
+      });
+
+      const results = await Promise.all(fetchPromises);
 
       const priceMap = {};
-      tickers.forEach((ticker, idx) => {
-        const r = results[idx];
-        if (r.status === "fulfilled" && r.value?.meta) {
-          const meta = r.value.meta;
-          const price = meta.regularMarketPrice;
-          const prevClose = meta.chartPreviousClose;
-          const change = price - prevClose;
-          const changePercent = (change / prevClose) * 100;
-
-          priceMap[ticker] = {
-            price: parseFloat(price.toFixed(2)),
-            change: parseFloat(change.toFixed(2)),
-            changePercent: parseFloat(changePercent.toFixed(2)),
-            timestamp: Date.now(),
-          };
+      results.forEach((res) => {
+        if (res.meta) {
+          priceMap[res.ticker] = res.meta;
         }
       });
 
@@ -149,6 +180,16 @@ mongoose
     }
 
     setInterval(broadcastMarketUpdates, BROADCAST_INTERVAL_MS);
+
+    // Start background prediction worker (in-process queue)
+    // Dynamically import the prediction queue module (avoid top-level await)
+    import("./utils/predictionQueue.js")
+      .then((m) => {
+        console.log("Prediction queue module loaded");
+      })
+      .catch((e) => {
+        console.error("Failed to start prediction queue:", e?.message || e);
+      });
 
     /* Legacy seed data logic (disabled – data already exists in DB) */
   })

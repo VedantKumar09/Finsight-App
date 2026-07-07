@@ -45,6 +45,18 @@ import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import ShowChartIcon from "@mui/icons-material/ShowChart";
+import StorageIcon from '@mui/icons-material/Storage';
+import HourglassTopIcon from '@mui/icons-material/HourglassTop';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import Button from '@mui/material/Button';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemText from '@mui/material/ListItemText';
+import Tooltip from '@mui/material/Tooltip';
 import { useNavigate } from "react-router-dom";
 
 const PIE_COLORS = [
@@ -56,10 +68,51 @@ const Dashboard = () => {
   const { palette } = useTheme();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(0);
+  const [statusOpen, setStatusOpen] = useState(false);
 
   const { data: portfolio, isLoading: portfolioLoading } = useGetPortfolioQuery();
   const { data: tradeHistory, isLoading: historyLoading } = useGetTradeHistoryQuery();
   const { data: watchlist, isLoading: watchlistLoading } = useGetWatchlistQuery();
+  const [status, setStatus] = React.useState({ pending: [], cached: [] });
+
+  React.useEffect(() => {
+    let mounted = true;
+    const rawBaseUrl = import.meta.env.VITE_BASE_URL || "";
+    const baseUrl = rawBaseUrl.replace(/\/$/, "");
+    const url = `${baseUrl}/predict-stock/pending`;
+
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(url, { headers: { authorization: localStorage.getItem("token") ? `Bearer ${localStorage.getItem("token")}` : undefined } });
+        if (!mounted) return;
+        if (res.ok) {
+          const j = await res.json();
+          // also fetch cache with timestamps for details
+          try {
+            const cacheRes = await fetch(`${baseUrl}/predict-stock/cache`, { headers: { authorization: localStorage.getItem("token") ? `Bearer ${localStorage.getItem("token")}` : undefined } });
+            if (cacheRes.ok) {
+              const cacheJson = await cacheRes.json();
+              j.cacheEntries = cacheJson;
+            } else {
+              j.cacheEntries = [];
+            }
+          } catch (e) {
+            j.cacheEntries = [];
+          }
+          setStatus(j);
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    fetchStatus();
+    const id = setInterval(fetchStatus, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, []);
 
   // PIE CHART DATA
   const pieData = useMemo(() => {
@@ -211,6 +264,65 @@ const Dashboard = () => {
                     ${portfolio?.buyingPower?.toLocaleString() || "100,000"}
                   </Typography>
                 </DashboardBox>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <DashboardBox p="1rem" sx={{ position: 'relative', overflow: 'visible' }}>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box display="flex" gap="0.75rem" alignItems="center">
+                      <HourglassTopIcon sx={{ color: palette.primary[300], fontSize: 28, transformOrigin: 'center' }} className="pulse" />
+                      <Box>
+                        <Typography variant="body2" color={palette.grey[300]}>Prediction Queue</Typography>
+                        <Typography variant="h5" fontWeight="bold" color={palette.primary[300]}>{status.pending?.length || 0}</Typography>
+                      </Box>
+                    </Box>
+                    <Box textAlign="right">
+                      <Typography variant="body2" color={palette.grey[300]}>Cached</Typography>
+                      <Typography variant="h6" fontWeight="bold" color={palette.grey[100]}>{status.cached?.length || 0}</Typography>
+                    </Box>
+                  </Box>
+                  <Box mt="0.75rem" display="flex" justifyContent="space-between" alignItems="center">
+                    <Box>
+                      {status.cached && status.cached.length > 0 && (
+                        <Box display="flex" gap="0.5rem" flexWrap="wrap">
+                          {status.cached.slice(0,6).map((t) => (
+                            <Chip key={t} size="small" label={t} sx={{ backgroundColor: 'rgba(255,255,255,0.03)', color: palette.grey[200] }} />
+                          ))}
+                        </Box>
+                      )}
+                    </Box>
+                    <Box>
+                      <Tooltip title="View full status" arrow>
+                        <Button variant="outlined" size="small" startIcon={<InfoOutlinedIcon />} onClick={() => setStatusOpen(true)}>
+                          Details
+                        </Button>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                  <style>{` .pulse { animation: pulse 2s infinite; } @keyframes pulse { 0% { transform: scale(1); opacity:1 } 50% { transform: scale(1.05); opacity:0.7 } 100% { transform: scale(1); opacity:1 } } `}</style>
+                </DashboardBox>
+                <Dialog open={statusOpen} onClose={() => setStatusOpen(false)} fullWidth maxWidth="sm">
+                  <DialogTitle>Prediction Queue & Cache</DialogTitle>
+                  <DialogContent>
+                    <Typography variant="subtitle2" color={palette.grey[400]}>Pending jobs</Typography>
+                    <List dense>
+                      {status.pending.length === 0 && <ListItem><ListItemText primary="No pending jobs" /></ListItem>}
+                      {status.pending.map((p) => (
+                        <ListItem key={p}><ListItemText primary={p} /></ListItem>
+                      ))}
+                    </List>
+                    <Divider sx={{ my: 1 }} />
+                    <Typography variant="subtitle2" color={palette.grey[400]}>Cached predictions (recent)</Typography>
+                    <List dense>
+                      {(!status.cacheEntries || status.cacheEntries.length === 0) && <ListItem><ListItemText primary="No cached predictions" /></ListItem>}
+                      {(status.cacheEntries || []).map((entry) => (
+                        <ListItem key={entry.ticker}><ListItemText primary={entry.ticker} secondary={new Date(entry.ts).toLocaleString()} /></ListItem>
+                      ))}
+                    </List>
+                  </DialogContent>
+                  <DialogActions>
+                    <Button onClick={() => setStatusOpen(false)}>Close</Button>
+                  </DialogActions>
+                </Dialog>
               </Grid>
               <Grid item xs={6} md={3}>
                 <DashboardBox p="1.25rem">

@@ -177,7 +177,7 @@ const Simulator = () => {
   const { data: portfolio, refetch: refetchPortfolio } = useGetPortfolioQuery();
   const { data: tradeHistory } = useGetTradeHistoryQuery();
 
-  const { livePrices, connected, updateSubscriptions } = useMarketWebSocket(
+  const { livePrices, connected, authError, updateSubscriptions } = useMarketWebSocket(
     liveUpdatesEnabled && searchedTicker ? [searchedTicker] : []
   );
 
@@ -237,10 +237,7 @@ const Simulator = () => {
     }
   };
 
-  const orderTotal = useMemo(() => {
-    if (!shares || !effectivePrice) return 0;
-    return (parseInt(shares) * effectivePrice).toFixed(2);
-  }, [shares, effectivePrice]);
+
 
   const isPositiveChange = stockData?.change >= 0;
 
@@ -802,9 +799,40 @@ const Simulator = () => {
       </DashboardBox>
 
       {/* SEARCH ERROR */}
+      {authError && (
+        <Alert
+          severity="warning"
+          sx={{ backgroundColor: "rgba(255, 160, 0, 0.06)" }}
+          action={
+            <Button
+              size="small"
+              onClick={() => {
+                localStorage.removeItem("token");
+                window.location.reload();
+              }}
+            >
+              Re-login
+            </Button>
+          }
+        >
+          WebSocket authorization failed. Please re-login to enable live updates.
+        </Alert>
+      )}
+
       {searchError && (
-        <Alert severity="error" sx={{ backgroundColor: "rgba(211, 47, 47, 0.1)" }}>
-          {searchError?.data?.message || "Failed to fetch stock data. Try a valid ticker."}
+        <Alert
+          severity="error"
+          sx={{ backgroundColor: "rgba(211, 47, 47, 0.1)" }}
+          action={
+            <Button
+              size="small"
+              onClick={() => handleSearch(searchedTicker || ticker)}
+            >
+              Retry
+            </Button>
+          }
+        >
+          {searchError?.data?.message || searchError?.data?.error || "Failed to fetch stock data. Try a valid ticker."}
         </Alert>
       )}
 

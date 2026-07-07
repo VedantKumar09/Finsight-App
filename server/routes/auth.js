@@ -43,6 +43,15 @@ router.post("/register", async (req, res) => {
       },
     });
   } catch (error) {
+    // Handle common cases: duplicate key (email) and validation errors
+    if (error.code === 11000 && error.keyPattern && error.keyPattern.email) {
+      return res.status(400).json({ message: "Email already registered" });
+    }
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ message: error.message });
+    }
+
+    console.error('Auth register error:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -79,6 +88,7 @@ router.post("/login", async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('Auth login error:', error);
     res.status(500).json({ message: error.message });
   }
 });

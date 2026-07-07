@@ -59,10 +59,47 @@ const StockPredictions = () => {
   const { palette } = useTheme();
   const [ticker, setTicker] = useState("");
   const [predictStock, { data: prediction, isLoading, error }] = usePredictStockMutation();
+  const [queued, setQueued] = useState(false);
+  const pollRef = React.useRef(null);
 
-  const handlePredict = () => {
+  const handlePredict = async () => {
     if (!ticker.trim()) return;
-    predictStock({ ticker: ticker.trim().toUpperCase() });
+    setQueued(false);
+
+    try {
+      const result = await predictStock({ ticker: ticker.trim().toUpperCase() }).unwrap();
+
+      // If server queued the job, start polling status endpoint
+      if (result && result.message && result.message.toLowerCase().includes("queued")) {
+        setQueued(true);
+        const rawBaseUrl = import.meta.env.VITE_BASE_URL || "";
+        const baseUrl = rawBaseUrl.replace(/\/$/, "");
+        const statusUrl = `${baseUrl}/predict-stock/status/${ticker.trim().toUpperCase()}`;
+
+        const start = Date.now();
+        pollRef.current = setInterval(async () => {
+          try {
+            const resp = await fetch(statusUrl, { headers: { authorization: localStorage.getItem("token") ? `Bearer ${localStorage.getItem("token")}` : undefined } });
+            if (resp.status === 200) {
+              const data = await resp.json();
+              // We received the prediction — emulate mutation result by setting internal state via predictStock's cache won't be updated here, so force refresh by re-calling predictStock to populate RTK cache
+              setQueued(false);
+              clearInterval(pollRef.current);
+              // Trigger a fetch via predictStock mutation to populate `prediction` (mutation will hit cache and return 200)
+              await predictStock({ ticker: ticker.trim().toUpperCase() }).unwrap();
+            } else if (Date.now() - start > 60000) {
+              // stop polling after 60s
+              setQueued(false);
+              clearInterval(pollRef.current);
+            }
+          } catch (e) {
+            // ignore network errors during polling
+          }
+        }, 3000);
+      }
+    } catch (err) {
+      // mutation error handling left to existing `error` UI
+    }
   };
 
   // Prepare combined chart data: historical + forecast
@@ -172,6 +209,12 @@ const StockPredictions = () => {
     </Box>
   );
 
+  React.useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
   return (
     <Box display="flex" flexDirection="column" gap="1.5rem" mt="1rem">
       {/* HEADER */}
@@ -191,6 +234,9 @@ const StockPredictions = () => {
           <PsychologyIcon sx={{ fontSize: "36px", color: palette.primary[400] }} />
           AI Stock Predictor
         </Typography>
+          {prediction && prediction._fromCache && (
+            <Chip label={`CACHED ${prediction._cachedAt ? new Date(prediction._cachedAt).toLocaleString() : ''}`} size="small" sx={{ ml: 2, backgroundColor: 'rgba(255,255,255,0.03)', color: palette.grey[100] }} />
+          )}
         <Typography variant="h5" color={palette.grey[500]} mt="0.5rem">
           Machine Learning powered 7-day stock price forecast using Random Forest & Gradient
           Boosting ensemble models
@@ -263,6 +309,12 @@ const StockPredictions = () => {
               }}
             />
           </Box>
+        )}
+
+        {queued && (
+          <Alert severity="info" sx={{ backgroundColor: "rgba(2,136,209,0.06)" }}>
+            Prediction queued — training running in background. Results will appear shortly.
+          </Alert>
         )}
       </DashboardBox>
 

@@ -1,2 +1,12 @@
 # Ignore repository-root VS Code settings
 /.vscode/
+
+# Build outputs
+client/dist/
+
+# Dependency folders
+client/node_modules/
+server/node_modules/
+
+# Archives
+archive/

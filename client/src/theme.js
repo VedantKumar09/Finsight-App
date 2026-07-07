@@ -145,5 +145,36 @@ export const themeSettings = {
         },
       },
     },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          backgroundColor: tokens.background.light,
+          color: tokens.grey[100],
+          borderRadius: 8,
+          padding: '16px',
+        },
+      },
+    },
+    MuiBackdrop: {
+      styleOverrides: {
+        root: {
+          backgroundColor: 'rgba(0,0,0,0.6)',
+        },
+      },
+    },
+    MuiDialogTitle: {
+      styleOverrides: {
+        root: {
+          color: tokens.grey[100],
+        },
+      },
+    },
+    MuiDialogContent: {
+      styleOverrides: {
+        root: {
+          color: tokens.grey[300],
+        },
+      },
+    },
   },
 };
