@@ -25,6 +25,8 @@ import {
   IconButton,
   LinearProgress,
   Slider,
+  Switch,
+  FormControlLabel,
 } from "@mui/material";
 import DashboardBox from "@/components/DashboardBox";
 import FlexBetween from "@/components/FlexBetween";
@@ -35,6 +37,7 @@ import {
   useGetPortfolioQuery,
   useGetTradeHistoryQuery,
 } from "@/state/api";
+import { useMarketWebSocket } from "@/hooks/useMarketWebSocket";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -68,6 +71,7 @@ import SkipPreviousIcon from "@mui/icons-material/SkipPrevious";
 import SkipNextIcon from "@mui/icons-material/SkipNext";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import ShowChartIcon from "@mui/icons-material/ShowChart";
+import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -151,6 +155,7 @@ const Simulator = () => {
   const [shares, setShares] = useState("");
   const [activeTab, setActiveTab] = useState(0);
   const [orderFeedback, setOrderFeedback] = useState(null);
+  const [liveUpdatesEnabled, setLiveUpdatesEnabled] = useState(true);
 
   // Timelapse state
   const [timelapseActive, setTimelapseActive] = useState(false);
@@ -171,6 +176,10 @@ const Simulator = () => {
   const [sellStock, { isLoading: isSelling }] = useSellStockMutation();
   const { data: portfolio, refetch: refetchPortfolio } = useGetPortfolioQuery();
   const { data: tradeHistory } = useGetTradeHistoryQuery();
+
+  const { livePrices, connected, updateSubscriptions } = useMarketWebSocket(
+    liveUpdatesEnabled && searchedTicker ? [searchedTicker] : []
+  );
 
   const intervalForRange = (r) => {
     if (r === "1d") return "5m";
@@ -212,7 +221,7 @@ const Simulator = () => {
       const params = {
         ticker: stockData.symbol,
         shares: parseInt(shares),
-        price: stockData.price,
+        price: effectivePrice || stockData.price,
       };
       const result =
         orderType === "BUY" ? await buyStock(params).unwrap() : await sellStock(params).unwrap();
@@ -229,11 +238,24 @@ const Simulator = () => {
   };
 
   const orderTotal = useMemo(() => {
-    if (!shares || !stockData) return 0;
-    return (parseInt(shares) * stockData.price).toFixed(2);
-  }, [shares, stockData]);
+    if (!shares || !effectivePrice) return 0;
+    return (parseInt(shares) * effectivePrice).toFixed(2);
+  }, [shares, effectivePrice]);
 
   const isPositiveChange = stockData?.change >= 0;
+
+  const liveStockUpdate = useMemo(() => {
+    if (!stockData || !liveUpdatesEnabled) return null;
+    const update = livePrices[stockData.symbol];
+    if (!update) return null;
+    return update;
+  }, [stockData, livePrices, liveUpdatesEnabled]);
+
+  const effectivePrice = liveStockUpdate?.price ?? stockData?.price;
+  const effectiveChange = liveStockUpdate?.change ?? stockData?.change;
+  const effectiveChangePercent = liveStockUpdate?.changePercent ?? stockData?.changePercent;
+  const isLivePositive = effectiveChange >= 0;
+  const isLiveUpdateAvailable = !!liveStockUpdate;
 
   // ── Analytics Computations ─────────────────────────────────────────────
 
@@ -521,6 +543,12 @@ const Simulator = () => {
     return () => clearInterval(timerRef.current);
   }, [timelapsePlaying, timelapseSpeed, timelapseData, timelapseDay]);
 
+  // Keep WebSocket subscriptions in sync with searched ticker
+  useEffect(() => {
+    if (!liveUpdatesEnabled) return;
+    updateSubscriptions(searchedTicker ? [searchedTicker] : []);
+  }, [searchedTicker, liveUpdatesEnabled, updateSubscriptions]);
+
   // Generate log entries as days advance
   useEffect(() => {
     if (!timelapseData || timelapseDay === 0) return;
@@ -784,19 +812,56 @@ const Simulator = () => {
               {/* Stock Header */}
               <FlexBetween mb="1rem">
                 <Box>
-                  <Typography variant="h3" fontWeight="bold" color={palette.grey[100]}>
-                    {stockData.symbol}
-                  </Typography>
+                  <Box display="flex" alignItems="center" gap="0.5rem">
+                    <Typography variant="h3" fontWeight="bold" color={palette.grey[100]}>
+                      {stockData.symbol}
+                    </Typography>
+                    {isLiveUpdateAvailable && (
+                      <Tooltip title="Live price updates active" arrow>
+                        <Chip
+                          icon={<FiberManualRecordIcon sx={{ fontSize: 10, color: "#00e676" }} />}
+                          label="LIVE"
+                          size="small"
+                          sx={{
+                            backgroundColor: "rgba(0, 230, 118, 0.1)",
+                            color: "#00e676",
+                            border: "1px solid rgba(0, 230, 118, 0.3)",
+                            fontWeight: "bold",
+                            fontSize: "0.65rem",
+                            height: 20,
+                            animation: "pulse 2s infinite",
+                            "@keyframes pulse": {
+                              "0%": { opacity: 1 },
+                              "50%": { opacity: 0.6 },
+                              "100%": { opacity: 1 },
+                            },
+                          }}
+                        />
+                      </Tooltip>
+                    )}
+                  </Box>
                   <Typography variant="h6" color={palette.grey[500]}>
                     {stockData.exchange} · {stockData.currency}
                   </Typography>
                 </Box>
                 <Box textAlign="right">
-                  <Typography variant="h2" fontWeight="bold" color={palette.grey[100]}>
-                    ${stockData.price}
+                  <Typography
+                    variant="h2"
+                    fontWeight="bold"
+                    color={palette.grey[100]}
+                    sx={{
+                      transition: "color 0.3s ease",
+                      color: isLiveUpdateAvailable
+                        ? isLivePositive
+                          ? palette.primary[300]
+                          : "#ef5350"
+                        : palette.grey[100],
+                    }}
+                  >
+                    ${effectivePrice}
                   </Typography>
                   <Box display="flex" alignItems="center" justifyContent="flex-end" gap="0.25rem">
-                    {isPositiveChange ? (
+                    {isLivePositive ? (
                       <TrendingUpIcon sx={{ color: palette.primary[400], fontSize: "18px" }} />
                     ) : (
                       <TrendingDownIcon sx={{ color: "#ef5350", fontSize: "18px" }} />
@@ -804,12 +869,26 @@ const Simulator = () => {
                     <Typography
                       variant="h5"
                       fontWeight="bold"
-                      color={isPositiveChange ? palette.primary[400] : "#ef5350"}
+                      color={isLivePositive ? palette.primary[400] : "#ef5350"}
                     >
-                      {isPositiveChange ? "+" : ""}
-                      {stockData.change} ({isPositiveChange ? "+" : ""}
-                      {stockData.changePercent}%)
+                      {isLivePositive ? "+" : ""}
+                      {effectiveChange} ({isLivePositive ? "+" : ""}
+                      {effectiveChangePercent}%)
                     </Typography>
+                    {isLiveUpdateAvailable && (
+                      <Chip
+                        icon={<RefreshIcon sx={{ fontSize: 10 }} />}
+                        label="Updated"
+                        size="small"
+                        sx={{
+                          backgroundColor: "rgba(255,255,255,0.05)",
+                          color: palette.grey[400],
+                          border: `1px solid ${palette.grey[700]}`,
+                          fontSize: "0.6rem",
+                          height: 18,
+                        }}
+                      />
+                    )}
                   </Box>
                 </Box>
               </FlexBetween>
@@ -852,12 +931,12 @@ const Simulator = () => {
                     <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop
                         offset="5%"
-                        stopColor={isPositiveChange ? palette.primary[400] : "#ef5350"}
+                        stopColor={isLivePositive ? palette.primary[400] : "#ef5350"}
                         stopOpacity={0.3}
                       />
                       <stop
                         offset="95%"
-                        stopColor={isPositiveChange ? palette.primary[400] : "#ef5350"}
+                        stopColor={isLivePositive ? palette.primary[400] : "#ef5350"}
                         stopOpacity={0}
                       />
                     </linearGradient>
@@ -888,7 +967,7 @@ const Simulator = () => {
                   <Area
                     type="monotone"
                     dataKey="price"
-                    stroke={isPositiveChange ? palette.primary[400] : "#ef5350"}
+                    stroke={isLivePositive ? palette.primary[400] : "#ef5350"}
                     strokeWidth={2}
                     fill="url(#priceGradient)"
                     dot={false}
@@ -962,12 +1041,55 @@ const Simulator = () => {
                 }}
               >
                 <FlexBetween>
-                  <Typography variant="h6" color={palette.grey[500]}>
-                    Market Price
-                  </Typography>
-                  <Typography variant="h4" fontWeight="bold" color={palette.grey[100]}>
-                    ${stockData.price}
-                  </Typography>
+                  <Box>
+                    <Typography variant="h6" color={palette.grey[500]}>
+                      Market Price
+                    </Typography>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          size="small"
+                          checked={liveUpdatesEnabled}
+                          onChange={(e) => setLiveUpdatesEnabled(e.target.checked)}
+                          sx={{
+                            "& .MuiSwitch-switchBase.Mui-checked": {
+                              color: palette.primary[400],
+                            },
+                            "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
+                              backgroundColor: palette.primary[700],
+                            },
+                          }}
+                        />
+                      }
+                      label={
+                        <Typography variant="caption" color={palette.grey[500]}>
+                          Live updates
+                        </Typography>
+                      }
+                      sx={{ m: 0 }}
+                    />
+                  </Box>
+                  <Box textAlign="right">
+                    <Typography
+                      variant="h4"
+                      fontWeight="bold"
+                      color={
+                        isLiveUpdateAvailable
+                          ? isLivePositive
+                            ? palette.primary[300]
+                            : "#ef5350"
+                          : palette.grey[100]
+                      }
+                      sx={{ transition: "color 0.3s ease" }}
+                    >
+                      ${effectivePrice}
+                    </Typography>
+                    {isLiveUpdateAvailable && (
+                      <Typography variant="caption" color={palette.grey[500]}>
+                        Updated {new Date(liveStockUpdate.timestamp).toLocaleTimeString()}
+                      </Typography>
+                    )}
+                  </Box>
                 </FlexBetween>
               </Box>
 

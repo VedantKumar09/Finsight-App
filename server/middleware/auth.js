@@ -16,3 +16,8 @@ export const verifyToken = (req, res, next) => {
   }
 };
 
+export const verifyTokenDirect = (token) => {
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  return decoded;
+};
+

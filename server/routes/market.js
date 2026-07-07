@@ -2,25 +2,9 @@ import express from "express";
 import User from "../models/User.js";
 import StockTransaction from "../models/StockTransaction.js";
 import { verifyToken } from "../middleware/auth.js";
+import { fetchYahooStockData, parseYahooMeta } from "../utils/yahooFinance.js";
 
 const router = express.Router();
-
-// Helper to fetch stock data from Yahoo Finance
-async function fetchYahooStockData(ticker, range = "1mo", interval = "1d") {
-  try {
-    const response = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=${range}&interval=${interval}`
-    );
-    const json = await response.json();
-    const result = json?.chart?.result?.[0];
-    
-    if (!result) return null;
-    return result;
-  } catch (error) {
-    console.error(`Error fetching Yahoo stock data for ${ticker}:`, error);
-    return null;
-  }
-}
 
 // 1. Search Stock Ticker (Historical and Live Data)
 router.get("/search/:ticker", verifyToken, async (req, res) => {
@@ -28,41 +12,15 @@ router.get("/search/:ticker", verifyToken, async (req, res) => {
   const { range = "1mo", interval = "1d" } = req.query;
 
   try {
-    const data = await fetchYahooStockData(ticker.toUpperCase(), range, interval);
+    const result = await fetchYahooStockData(ticker.toUpperCase(), range, interval);
 
-    if (!data) {
+    if (!result) {
       return res.status(404).json({ message: "Stock ticker not found or Yahoo Finance service down." });
     }
 
-    const meta = data.meta;
-    const timestamps = data.timestamp || [];
-    const quotes = data.indicators?.quote?.[0] || {};
-    
-    // Format historical data for Recharts charting on frontend
-    const history = timestamps.map((timestamp, index) => {
-      const price = quotes.close?.[index];
-      const d = new Date(timestamp * 1000);
-      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      return {
-        date: dateStr,
-        price: price ? parseFloat(price.toFixed(2)) : null,
-      };
-    }).filter(item => item.price !== null);
+    const data = parseYahooMeta(result);
 
-    const price = meta.regularMarketPrice;
-    const prevClose = meta.chartPreviousClose;
-    const change = price - prevClose;
-    const changePercent = (change / prevClose) * 100;
-
-    res.status(200).json({
-      symbol: meta.symbol,
-      price: parseFloat(price.toFixed(2)),
-      change: parseFloat(change.toFixed(2)),
-      changePercent: parseFloat(changePercent.toFixed(2)),
-      exchange: meta.exchangeName,
-      currency: meta.currency,
-      history,
-    });
+    res.status(200).json(data);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -205,9 +163,9 @@ router.get("/portfolio", verifyToken, async (req, res) => {
 
     // Map each holding to current stock price
     for (const holding of user.holdings) {
-      const data = await fetchYahooStockData(holding.ticker, "1d", "1d");
+      const result = await fetchYahooStockData(holding.ticker, "1d", "1d");
       
-      const currentPrice = data?.meta?.regularMarketPrice || holding.averagePrice;
+      const currentPrice = result?.meta?.regularMarketPrice || holding.averagePrice;
       const currentValue = holding.shares * currentPrice;
       const totalCost = holding.shares * holding.averagePrice;
       const gainLoss = currentValue - totalCost;
@@ -258,18 +216,18 @@ router.get("/watchlist", verifyToken, async (req, res) => {
   try {
     const results = await Promise.allSettled(
       WATCHLIST_TICKERS.map(async (ticker) => {
-        const data = await fetchYahooStockData(ticker, "5d", "1d");
-        if (!data) return null;
+        const result = await fetchYahooStockData(ticker, "5d", "1d");
+        if (!result) return null;
 
-        const meta = data.meta;
+        const meta = result.meta;
         const price = meta.regularMarketPrice;
         const prevClose = meta.chartPreviousClose;
         const change = price - prevClose;
         const changePercent = (change / prevClose) * 100;
 
         // Mini sparkline data (last 5 days)
-        const timestamps = data.timestamp || [];
-        const quotes = data.indicators?.quote?.[0] || {};
+        const timestamps = result.timestamp || [];
+        const quotes = result.indicators?.quote?.[0] || {};
         const sparkline = timestamps.map((t, i) => {
           const close = quotes.close?.[i];
           return close ? parseFloat(close.toFixed(2)) : null;
