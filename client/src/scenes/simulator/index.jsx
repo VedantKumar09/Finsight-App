@@ -257,6 +257,11 @@ const Simulator = () => {
   const isLivePositive = effectiveChange >= 0;
   const isLiveUpdateAvailable = !!liveStockUpdate;
 
+  const orderTotal = useMemo(() => {
+    if (!shares || !effectivePrice) return 0;
+    return (parseInt(shares) * effectivePrice).toFixed(2);
+  }, [shares, effectivePrice]);
+
   // ── Analytics Computations ─────────────────────────────────────────────
 
   const analytics = useMemo(() => {
