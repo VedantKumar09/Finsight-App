@@ -129,11 +129,11 @@ High-level components and data flow:
 
 ```mermaid
 flowchart LR
-	Browser[Client (React + RTK Query + WS Hook)] -->|HTTP /market/search| Server(API: Express)
+	Browser["Client (React + RTK Query + WS Hook)"] -->|HTTP /market/search| Server("API: Express")
 	Browser -->|WebSocket /ws/market| Server
-	Server -->|fetch| Yahoo[Yahoo Finance API]
-	Server -->|spawn| ML[Python ML scripts]
-	Server -->|MongoDB| DB[(MongoDB)]
+	Server -->|fetch| Yahoo["Yahoo Finance API"]
+	Server -->|spawn| ML["Python ML scripts"]
+	Server -->|MongoDB| DB[("MongoDB")]
 	ML -->|JSON result| Server
 	Server -->|priceUpdate| Browser
 ```
