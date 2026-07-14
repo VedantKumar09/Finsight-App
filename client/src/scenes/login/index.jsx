@@ -37,6 +37,11 @@ const Login = () => {
       navigate("/");
       window.location.reload();
     } catch (err) {
+      if (err?.status === "FETCH_ERROR") {
+        setErrorMessage("Backend is unavailable. Start the server on port 9000 and try again.");
+        return;
+      }
+
       setErrorMessage(err?.data?.message || "Login failed. Please try again.");
     }
   };

@@ -24,6 +24,14 @@ import predictStockRoutes from "./routes/predictStock.js";
 
 /* CONFIGURATIONS */
 dotenv.config();
+
+const requiredEnvVars = ["MONGO_URL", "JWT_SECRET"];
+const missingEnvVars = requiredEnvVars.filter((name) => !process.env[name]);
+
+if (missingEnvVars.length > 0) {
+  throw new Error(`Missing required environment variables: ${missingEnvVars.join(", ")}`);
+}
+
 const app = express();
 app.use(express.json());
 app.use(helmet());
@@ -32,6 +40,10 @@ app.use(morgan("common"));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cors());
+
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 
 /* ROUTES */
 app.use("/auth", authRoutes);
@@ -193,5 +205,8 @@ mongoose
 
     /* Legacy seed data logic (disabled – data already exists in DB) */
   })
-  .catch((error) => console.log(`${error} did not connect`));
+  .catch((error) => {
+    console.error("Failed to connect to MongoDB:", error?.message || error);
+    process.exit(1);
+  });
 
